@@ -1,7 +1,6 @@
 #include <TinyWireM.h>
 #include "ssd1327.h"
-//0 01000000 00001100
-#define F_CPU 8000000UL
+
 #define SSD1327_COMMAND_BYTE 0x00
 #define SSD1327_DATA_BYTE 0xC0
 #define MAX_PACKAGE_LENGTH 16
@@ -13,62 +12,61 @@ static void sendCommand(uint8_t command1);
 static void sendCommand(uint8_t command1, uint8_t command2);
 static void sendCommand(uint8_t command1, uint8_t command2, uint8_t command3);
 
-static void startTransmission() {
+ssd1327::ssd1327() {
+  TinyWireM.begin();
+}
+
+void ssd1327::startTransmission() {
 	TinyWireM.beginTransmission(address);
 }
 
-static bool sendByte(uint8_t byte) {
-	return TinyWireM.write(byte);
+void ssd1327::sendByte(uint8_t byte) {
+	TinyWireM.write(byte);
 }
 
-static void sendBytes(uint8_t *byte, uint8_t length) {
+void ssd1327::sendBytes(uint8_t *byte, uint8_t length) {
   startTransmission();
+  
 	for (uint8_t i = 0; i < length; i++) {
-		/*uint8_t left = i + MAX_PACKAGE_LENGTH >= length ? length - i : MAX_PACKAGE_LENGTH;
-		
-		dataStart();
-		for (uint8_t j = 0; j < left; j++) {
-			sendByte(byte[i + j]);
-		}
-		stopTransmission();*/
     sendByte(SSD1327_DATA_BYTE);
     sendByte(byte[i]);
 	}
+ 
   stopTransmission();
 }
 
-static bool sendBytesAsOne(uint8_t *byte, uint8_t length) {
-	return TinyWireM.write(byte, length);
+void ssd1327::sendBytesAsOne(uint8_t *byte, uint8_t length) {
+	TinyWireM.write(byte, length);
 }
 
-static void stopTransmission(void) {
+void ssd1327::stopTransmission(void) {
 	TinyWireM.endTransmission();
 }
 
-static void commandStart(void) {
+void ssd1327::commandStart(void) {
 	startTransmission();
 	sendByte(SSD1327_COMMAND_BYTE);
 }
 
-static void dataStart(void) {
+void ssd1327::dataStart(void) {
 	startTransmission();
 	sendByte(SSD1327_DATA_BYTE);
 }
 
-static void sendCommand(uint8_t command1) {
+void ssd1327::sendCommand(uint8_t command1) {
 	commandStart();
 	sendByte(command1);
 	stopTransmission();
 }
 
-static void sendCommand(uint8_t command1, uint8_t command2) {
+void ssd1327::sendCommand(uint8_t command1, uint8_t command2) {
 	commandStart();
 	sendByte(command1);
 	sendByte(command2);
 	stopTransmission();
 }
 
-static void sendCommand(uint8_t command1, uint8_t command2, uint8_t command3) {
+void ssd1327::sendCommand(uint8_t command1, uint8_t command2, uint8_t command3) {
 	commandStart();
 	sendByte(command1);
 	sendByte(command2);
@@ -76,12 +74,7 @@ static void sendCommand(uint8_t command1, uint8_t command2, uint8_t command3) {
 	stopTransmission();
 }
 
-#define DRAW_BUFFER_SIZE 8
-static uint8_t drawBuffer[DRAW_BUFFER_SIZE];
-static uint8_t drawBufferCursor;
-static bool combineBuffer = false;
-
-static void draw(uint8_t value, bool useBuffer) {
+void ssd1327::draw(uint8_t value, bool useBuffer) {
   if (useBuffer) {
     if (combineBuffer) {
       drawBuffer[drawBufferCursor] += value;
@@ -95,11 +88,6 @@ static void draw(uint8_t value, bool useBuffer) {
 
     if (drawBufferCursor >= DRAW_BUFFER_SIZE) {
       sendBytes(drawBuffer, DRAW_BUFFER_SIZE);
-      /*for (uint8_t i = 0; i < DRAW_BUFFER_SIZE; i++) {
-        dataStart();
-        sendByte(drawBuffer[i]);
-        stopTransmission();
-      }*/
 
       drawBufferCursor = 0;
       combineBuffer = false;
@@ -115,17 +103,13 @@ static void draw(uint8_t value, bool useBuffer) {
   }
 }
 
-static void _drawBuffer() {
+void ssd1327::drawAllBuffer() {
   if (drawBufferCursor > 0) {
     sendBytes(drawBuffer, drawBufferCursor);
 
     drawBufferCursor = 0;
     combineBuffer = false;
   }
-}
-
-ssd1327::ssd1327() {
-	TinyWireM.begin();
 }
 
 void ssd1327::on() {
@@ -139,20 +123,6 @@ void ssd1327::off() {
 void ssd1327::drawCompressedBitmap(const uint8_t arr[], const uint8_t sequences[], uint16_t offset, uint8_t arrayLength, uint8_t sizeX, uint8_t sizeY, uint8_t x, uint8_t y) {
   sendCommand(0x15, x, x + sizeX / 2 - 1);
   sendCommand(0x75, y, y + sizeY - 1);
-  delay(10);
-
-  /*for (uint16_t j = 1; j <= length; j++) {
-    uint16_t data = pgm_read_byte_near(arr + j);
-
-    uint8_t value = data << 4;
-    value = value >> 4;
-    
-    uint16_t repeatCount = (data - value) >> 4;
-
-    for (uint16_t i = 0; i < repeatCount; i++) {
-      draw(value, true);
-    }
-  }*/
 
   for (uint16_t j = offset; j <= offset + arrayLength; j++) {
     uint16_t sequenceId = pgm_read_byte_near(arr + j);
@@ -164,25 +134,24 @@ void ssd1327::drawCompressedBitmap(const uint8_t arr[], const uint8_t sequences[
     }
   }
 
-  _drawBuffer();
+  drawAllBuffer();
 }
 
 void ssd1327::drawBitmap(const uint8_t arr[], uint8_t sizeX, uint8_t sizeY, uint8_t x, uint8_t y) {
   uint16_t arrayLength = sizeX * sizeY;
   sendCommand(0x15, x, x + sizeX / 2 - 1);
   sendCommand(0x75, y, y + sizeY - 1);
-  delay(10);
 
   for (uint16_t j = 0; j < arrayLength; j++) {
     draw(pgm_read_byte_near(arr + j), true);
   }
 
-  _drawBuffer();
+  drawAllBuffer();
 }
 
 void ssd1327::clear(uint8_t color) {
-	sendCommand(0x15, 0x00, 0x3F);//0x3F 0x2D
-	sendCommand(0x75, 0x00, 0x7F);
+	sendCommand(0x15, 0x00, column);//0x3F 0x2D
+	sendCommand(0x75, 0x00, row);
   
 	for (uint8_t x = 0; x < 128; x++){
     for (uint8_t y = 0; y < 112; y++) {
@@ -190,26 +159,24 @@ void ssd1327::clear(uint8_t color) {
     }
 	}
 
- _drawBuffer();
+ drawAllBuffer();
 }
 
 void ssd1327::clear(uint8_t color, uint8_t sizeX, uint8_t sizeY, uint8_t x, uint8_t y) {
   uint16_t arrayLength = sizeX * sizeY;
   sendCommand(0x15, x, x + sizeX / 2 - 1);
   sendCommand(0x75, y, y + sizeY - 1);
-  delay(10);
 
   for (uint16_t j = 0; j < arrayLength; j++) {
     draw(color, true);
   }
 
-  _drawBuffer();
+  drawAllBuffer();
 }
 
 void ssd1327::clearBorder(uint8_t color, uint8_t sizeX, uint8_t sizeY, uint8_t x, uint8_t y) {
   sendCommand(0x15, x, x + sizeX / 2 - 1);
   sendCommand(0x75, y, y);
-  delay(10);
 
   for (uint16_t j = 0; j < sizeX; j++) {
     draw(color, true);
@@ -236,7 +203,7 @@ void ssd1327::clearBorder(uint8_t color, uint8_t sizeX, uint8_t sizeY, uint8_t x
     draw(color, true);
   }
 
-  _drawBuffer();
+  drawAllBuffer();
 }
 
 void ssd1327::remap(uint8_t value) {
